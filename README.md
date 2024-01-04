@@ -1,6 +1,6 @@
 # epicsarchiver
 
-![License](https://img.shields.io/badge/license-MIT-orange.svg) ![Python](https://img.shields.io/badge/python-v3.11-blue.svg?logo=python) ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-v2.0.23-brown.svg)
+![License](https://img.shields.io/badge/license-MIT-orange.svg) ![Python](https://img.shields.io/badge/python-v3.11-22558a.svg?logo=python&color=22558a) ![FastAPI](https://img.shields.io/badge/FastAPI-v0.105.0-3b9388.svg?logo=fastapi&color=3b9388) ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-v2.0.23-brown.svg)
 
 Archiving Epics PVs with Python and SQL
 
@@ -14,6 +14,26 @@ Archiving Epics PVs with Python and SQL
 
 ------------
 ## Installation
+
+### Development
+To set up the project for development, just clone the repository, install all the requirements, the project and the pre-commit hooks.
+
+```bash
+git clone -b main https://github.com/pyepics/epicsarchiver/git && cd epicsarchiver
+pip install -r requirements.txt && pip install -r requirements_dev.txt
+pip install -e .
+pre-commit install
+```
+
+> Pre-commit is a tool that checks your code for any errors before you commit it. It helps maintain the quality of the codebase and reduces the chance of pushing faulty code. When you try to commit your changes, pre-commit will run checks defined in the [.pre-commit-config.yaml](.pre-commit-config.yaml) file. If any of these checks fail, the commit will be aborted.
+
+### Running the Server
+After setting up the project for development, you can start the Uvicorn server by running the [epicsarchiver.py](epicsarchiver.py) file:
+
+```bash
+python epicsarchiver.py
+```
+
 
 [back to top](#table-of-contents)
 

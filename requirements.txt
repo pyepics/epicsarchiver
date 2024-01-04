@@ -1,0 +1,16 @@
+# -----------------------------------------------------------------------------
+# Project: epicsarchiver
+# File: requirements.txt
+# -----------------------------------------------------------------------------
+# Purpose:
+# This file lists the Python package dependencies required for the 
+# epicsarchiver project. Each line in this file specifies a package along with 
+# its version that should be installed.
+#
+# Copyright (C) 2024 GSECARS, The University of Chicago, USA
+# This software is distributed under the terms of the MIT license.
+# -----------------------------------------------------------------------------
+
+fastapi==0.105.0
+pydantic==2.5.3
+sqlalchemy[asyncio]==2.0.23

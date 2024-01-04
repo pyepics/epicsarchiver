@@ -1,0 +1,25 @@
+# -----------------------------------------------------------------------------
+# Project: epicsarchiver
+# File: .pre-commit-config.yaml
+# -----------------------------------------------------------------------------
+# Purpose:
+# This file is used to configure pre-commit hooks for the epicsarchiver project. 
+# Pre-commit hooks help to enforce code style guidelines and catch common issues 
+# before changes are committed to the repository.
+#
+# Copyright (C) 2024 GSECARS, The University of Chicago, USA
+# This software is distributed under the terms of the MIT license.
+# -----------------------------------------------------------------------------
+
+repos:
+
+  - repo: https://github.com/psf/black
+    rev: 23.12.1
+    hooks:
+      - id: black
+        language_version: python3.11
+
+  - repo: https://github.com/PyCQA/flake8
+    rev: 6.1.0
+    hooks:
+      - id: flake8
