@@ -11,11 +11,25 @@
 # This software is distributed under the terms of the MIT license.
 # -----------------------------------------------------------------------------
 
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
+
 from fastapi import FastAPI
+
+from epicsarchiver.api import api_router
+from epicsarchiver.database import ENGINE, BASE
 
 
 # Expose the FastAPI application instance
 __all__ = ["app"]
+
+
+# Lifespan event handler for creating all database tables
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator:
+    async with ENGINE.begin() as conn:
+        await conn.run_sync(BASE.metadata.create_all)
+    yield
 
 
 # Create the FastAPI application
@@ -27,4 +41,9 @@ app = FastAPI(
         "name": "MIT",
         "url": "https://github.com/pyepics/epicsarchiver/blob/main/LICENSE",
     },
+    docs_url="/",
+    lifespan=lifespan,
 )
+
+# Add the routers to the application
+app.include_router(api_router)

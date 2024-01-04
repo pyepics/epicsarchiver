@@ -1,33 +1,19 @@
+#!/usr/bin/env python3
 # -----------------------------------------------------------------------------
 # Project: epicsarchiver
-# File: .gitignore
+# File: routes.py
 # -----------------------------------------------------------------------------
-# Purpose: 
-# This file is used by Git to determine which files and directories to ignore 
-# when committing changes.
+# Purpose:
+# This file is used to create the API router for the epicsarchiver application.
+# This allows to split the FastAPI application instance into multiple smaller
+# routers.
 #
 # Copyright (C) 2024 GSECARS, The University of Chicago, USA
 # This software is distributed under the terms of the MIT license.
 # -----------------------------------------------------------------------------
 
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
+from fastapi import APIRouter
 
-# Distribution / packaging
-*.egg-info/
-dist/
-build/
 
-# OS generated files
-.DS_Store
-Thumbs.db
-Desktop.ini
-*~
-
-# Editors
-.idea/
-.vscode/
-
-# Secret files
-.env
+# Create the API router
+api_router = APIRouter()

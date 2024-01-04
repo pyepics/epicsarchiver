@@ -1,33 +1,16 @@
+#!/usr/bin/env python3
 # -----------------------------------------------------------------------------
 # Project: epicsarchiver
-# File: .gitignore
+# File: __init__.py
 # -----------------------------------------------------------------------------
-# Purpose: 
-# This file is used by Git to determine which files and directories to ignore 
-# when committing changes.
+# Purpose:
+# This file is used to initialize the epicsarchiver.api package.
 #
 # Copyright (C) 2024 GSECARS, The University of Chicago, USA
 # This software is distributed under the terms of the MIT license.
 # -----------------------------------------------------------------------------
 
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
+from epicsarchiver.api.routes import api_router
 
-# Distribution / packaging
-*.egg-info/
-dist/
-build/
 
-# OS generated files
-.DS_Store
-Thumbs.db
-Desktop.ini
-*~
-
-# Editors
-.idea/
-.vscode/
-
-# Secret files
-.env
+__all__ = ["api_router"]
