@@ -15,7 +15,11 @@
 import os
 from dotenv import load_dotenv
 
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.ext.declarative import declarative_base
 
 # Load the environment variables from the .env file
@@ -39,3 +43,14 @@ SESSION = async_sessionmaker(
 
 # Base for all models
 BASE = declarative_base()
+
+
+# Expose the database session
+async def get_database() -> AsyncSession:
+    """Get a database session."""
+
+    database = SESSION()
+    try:
+        yield database
+    finally:
+        await database.close()
