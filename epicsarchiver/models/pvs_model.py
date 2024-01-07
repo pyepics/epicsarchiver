@@ -43,14 +43,15 @@ class PV(BASE):
         Enum("yes", "no", name="active_enum"), default="yes"
     )
 
-    # Relationship to the PVData model (one-to-one)
-    pvdata = relationship("PVData", back_populates="pv", uselist=False)
+    # Relationship to the PVData model and Cache model
+    pvdata = relationship("PVData", back_populates="pv")
+    cache = relationship("Cache", back_populates="pv", uselist=False)
 
 
 class PVData(BASE):
     """Model for the pvdat table."""
 
-    __tablename__ = "pvdat"
+    __tablename__ = "pvdata"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     time: Mapped[float] = mapped_column(Float, nullable=False)
@@ -61,3 +62,26 @@ class PVData(BASE):
 
     # Relationship to the PV model
     pv = relationship("PV", back_populates="pvdata")
+
+
+class Cache(BASE):
+    """Model for the cache table."""
+
+    __tablename__ = "cache"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    pvname: Mapped[str] = mapped_column(String(128), index=True)
+    type: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="int"
+    )
+    value: Mapped[str] = mapped_column(String(4096))
+    cvalue: Mapped[str] = mapped_column(String(4096))
+    ts: Mapped[float] = mapped_column(Float)
+    active: Mapped[str] = mapped_column(
+        Enum("yes", "no", name="active_enum"), default="yes"
+    )
+
+    # Relationship to the PV model
+    pv_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("pv.id"), nullable=False, index=True
+    )

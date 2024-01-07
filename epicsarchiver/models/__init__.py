@@ -10,7 +10,7 @@
 # This software is distributed under the terms of the MIT license.
 # -----------------------------------------------------------------------------
 
-from epicsarchiver.models.pvs_model import PV
+from epicsarchiver.models.pvs_model import PV, PVData, Cache
 
 
-__all__ = ["PV"]
+__all__ = ["PV", "PVData", "Cache"]
