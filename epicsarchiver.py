@@ -4,19 +4,23 @@
 # File: epicsarchiver.py
 # -----------------------------------------------------------------------------
 # Purpose:
-# This is the main entry point for the epicsarchiver application. It is used
-# to run the FastAPI application instance with Uvicorn in reload mode. This
-# allows the application to be run in a development environment.
+# This is the main entry point for the epicsarchiver application. This file
+# starts the command line interface for running the cli application.
 #
 # Copyright (C) 2024 GSECARS, The University of Chicago, USA
 # This software is distributed under the terms of the MIT license.
 # -----------------------------------------------------------------------------
 
-from uvicorn import run
+import sys
 
-from epicsarchiver import app  # noqa: F401
+from epicsarchiver.cli import CLI
+
+
+def main() -> None:
+    """The main entry point for the epicsarchiver application."""
+    epicsarchiver_cli = CLI(args=sys.argv[1:])
+    epicsarchiver_cli.start()
 
 
 if __name__ == "__main__":
-    # Run the FastAPI application instance with Uvicorn in reload mode.
-    run(app="epicsarchiver:app", host="0.0.0.0", port=8000, reload=True)
+    main()
