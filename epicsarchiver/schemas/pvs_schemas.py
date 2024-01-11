@@ -36,4 +36,4 @@ class PV(PVBase):
     active: str = Field(..., description="The active status of the PV.")
 
     class Config:
-        orm_mode = True
+        from_attributes = True
