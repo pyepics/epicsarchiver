@@ -43,9 +43,10 @@ class PV(BASE):
         Enum("yes", "no", name="active_enum"), default="yes"
     )
 
-    # Relationship to the PVData model and Cache model
+    # Relationship to the PVData model, Cache and Alert model
     pvdata = relationship("PVData", back_populates="pv")
     cache = relationship("Cache", back_populates="pv", uselist=False)
+    alert = relationship("Alert", back_populates="pv", uselist=False)
 
 
 class PVData(BASE):
@@ -79,6 +80,38 @@ class Cache(BASE):
     ts: Mapped[float] = mapped_column(Float)
     active: Mapped[str] = mapped_column(
         Enum("yes", "no", name="active_enum"), default="yes"
+    )
+
+    # Relationship to the PV model
+    pv_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("pv.id"), nullable=False, index=True
+    )
+
+
+class Alert(BASE):
+    """Model for the alert table."""
+
+    __tablename__ = "alerts"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    pvname: Mapped[str] = mapped_column(
+        String(128), index=True, nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    mailto: Mapped[str] = mapped_column(String(1024))
+    mailmsg: Mapped[str] = mapped_column(String(32768))
+    trippoint: Mapped[bytes] = mapped_column(LargeBinary)
+    timeout: Mapped[float] = mapped_column(Float, default=30.0)
+    compare: Mapped[str] = mapped_column(
+        Enum("eq", "ne", "le", "lt", "ge", "gt", name="compare_enum"),
+        nullable=False,
+        default="eq",
+    )
+    status: Mapped[str] = mapped_column(
+        Enum("alarm", "ok", name="compare_enum"), nullable=False, default="ok"
+    )
+    active: Mapped[str] = mapped_column(
+        Enum("yes", "no", name="compare_enum"), nullable=False, default="yes"
     )
 
     # Relationship to the PV model
