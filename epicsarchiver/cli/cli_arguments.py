@@ -22,7 +22,7 @@ class CLIArguments:
     """A dataclass for creating the command line arguments instance."""
 
     args: list[str]
-    _parser: ArgumentParser = field(init=False, compare=False, repr=False)
+    parser: ArgumentParser = field(init=False, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         """Runs the configuration for the command line arguments."""
@@ -31,28 +31,28 @@ class CLIArguments:
     def _configure_parser(self) -> None:
         """Configures the command line argument parser."""
         # Create the command line argument parser
-        self._parser = ArgumentParser(
+        self.parser = ArgumentParser(
             prog="epicsarchiver",
             description="A command line interface for epicsarchiver.",
             add_help=False,
         )
 
         # Add the command line arguments
-        self._parser.add_argument(
+        self.parser.add_argument(
             "-h",
             "--help",
             dest="help",
             action="store_true",
             help="Displays the help menu.",
         )
-        self._parser.add_argument(
+        self.parser.add_argument(
             "-a",
             "--api",
             dest="api",
             action="store_true",
             help="Starts the API server.",
         )
-        self._parser.add_argument(
+        self.parser.add_argument(
             "-d",
             "--devel",
             dest="devel",
@@ -63,7 +63,7 @@ class CLIArguments:
     def parse(self) -> None:
         """Parses a command line argument and runs the associated action."""
         # Parse the command line arguments if there are any
-        arguments = self._parser.parse_args(self.args)
+        arguments = self.parser.parse_args(self.args)
 
         # Check the arguments
         if arguments.api:
@@ -74,4 +74,4 @@ class CLIArguments:
             start_api(devel=True)
         elif arguments.help:
             # Display the help menu if the user specifies the "help" command
-            self._parser.print_help()
+            self.parser.print_help()

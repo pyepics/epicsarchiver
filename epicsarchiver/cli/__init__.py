@@ -13,6 +13,7 @@
 from dataclasses import dataclass, field
 
 from epicsarchiver.cli.cli_arguments import CLIArguments
+from epicsarchiver.cli.cli_menu import CLIMenu
 
 
 __all__ = ["CLI"]
@@ -37,9 +38,13 @@ class CLI:
 
     args: list[str]
     _cli_arguments: CLIArguments = field(init=False, compare=False, repr=False)
+    _cli_menu: CLIMenu = field(init=False, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         self._cli_arguments = CLIArguments(args=self.args)
+        self._cli_menu = CLIMenu(
+            help_function=self._cli_arguments.parser.print_help
+        )
 
     def start(self) -> None:
         """Starts the epicsarchiver CLI application."""
@@ -49,3 +54,6 @@ class CLI:
         if len(self.args) >= 1:
             # Parse the command line arguments if there are any
             self._cli_arguments.parse()
+        else:
+            # Display the default CLI menu if there are no arguments
+            self._cli_menu.display()
