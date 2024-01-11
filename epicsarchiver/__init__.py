@@ -18,7 +18,7 @@ from fastapi import FastAPI
 
 from epicsarchiver.api import api_router
 from epicsarchiver.database import ENGINE, BASE
-from epicsarchiver.models import pvs_model  # noqa: F401
+from epicsarchiver.models import cache_model  # noqa: F401
 
 
 # Expose the FastAPI application instance

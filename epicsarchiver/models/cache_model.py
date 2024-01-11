@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -----------------------------------------------------------------------------
 # Project: epicsarchiver
-# File: pvs_model.py
+# File: cache_model.py
 # -----------------------------------------------------------------------------
 # Purpose:
 # This file is used to define the PVs model for the epicsarchiver package. It
