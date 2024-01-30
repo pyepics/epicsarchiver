@@ -42,9 +42,9 @@ app = FastAPI(
         "name": "MIT",
         "url": "https://github.com/pyepics/epicsarchiver/blob/main/LICENSE",
     },
-    docs_url="/",
+    docs_url="/api",
     lifespan=lifespan,
 )
 
 # Add the routers to the application
-app.include_router(api_router)
+app.include_router(api_router, prefix="/api")
