@@ -9,13 +9,18 @@ dependencies = [
     "pyepics>=3.5.0",
     "numpy>=1.19",
     "sqlalchemy>=2.0",
+    "sqlalchemy_utils",
     "toml",
+    "charset_normalizer",
     "flask"
 ]
-requires-python = ">= 3.8"
+
+requires-python = ">= 3.9"
 authors = [
-    {name = "Matthew Newville", email = "matt.newville@gmail.com"},
+    {name = "Matthew Newville", email = "newville@cars.uchicago.edu"},
+    {name = "Chris Skordas", email = "skordas@cars.uchicago.edu},
 ]
+
 description = "Archiver for Epics PVs with web display"
 readme = "README.rst"
 license = {file="License"}
@@ -24,16 +29,15 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: Implementation :: CPython",
-    "Programming Language :: Python :: Implementation :: PyPy",
 ]
 
 [project.scripts]
