@@ -1,0 +1,20 @@
+#
+# example credentials file for Epics Archiver
+# this will be used for all database connections
+#
+ 
+# The pvarch CLI program can either find this file
+# with the -c argument:
+#    pvarch -c /path/to/cred.txt
+# or by setting the environmental variable PVARCH_CREDENTIALS
+# to point to this file.
+####
+# this file is parsed with TOML
+
+server   = 'postgresql'
+host     = 'localhost'
+user     = 'epics'
+password = 'change to password'
+# port = 5432
+
+
