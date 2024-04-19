@@ -6,7 +6,6 @@ import time
 from math import log10
 from random import randint
 
-
 from sqlalchemy import MetaData, create_engine, engine, text
 from sqlalchemy.orm import sessionmaker
 
