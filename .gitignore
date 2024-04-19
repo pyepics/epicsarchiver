@@ -1,5 +1,6 @@
 # specific to this project
 credentials.txt
+epicsarchiver/version.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
