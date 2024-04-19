@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "epicsarchiver"
+dynamic = ["version"]
+dependencies = [
+    "pyepics>=3.5.0",
+    "numpy>=1.19",
+    "sqlalchemy>=2.0",
+    "toml",
+    "flask"
+]
+requires-python = ">= 3.8"
+authors = [
+    {name = "Matthew Newville", email = "matt.newville@gmail.com"},
+]
+description = "Archiver for Epics PVs with web display"
+readme = "README.rst"
+license = {file="License"}
+keywords = ["Epics Channel Access"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+
+[project.scripts]
+    pvarch = "epicsarchiver:pvarch_main"
+
+[project.urls]
+Homepage = "https://github.com/pyepics/epicsarchiver/"
+Documentation = "https://github.com/pyepics/epicsarchiver/"
+
+[project.optional-dependencies]
+dev = [ "build",   "twine"]
+web = ["flask"]
+all = ["epicsarchiver[dev, web]"]
+
+[tool.setuptools.packages.find]
+include = ["epicsarchiver"]
+
+[tool.setuptools_scm]
+write_to = "epicsarchiver/version.py"
+version_scheme = "post-release"
+
