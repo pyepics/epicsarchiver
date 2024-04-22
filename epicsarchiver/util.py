@@ -3,11 +3,19 @@
 import os
 import toml
 import time
-from math import log10
+from datetime import datetime
 from random import randint
+from charset_normalizer import from_bytes
 
-from sqlalchemy import MetaData, create_engine, engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import (MetaData, and_, create_engine, text, func,
+                        Table, Column, ColumnDefault, ForeignKey,
+                        Integer, Float, String, Text, DateTime,
+                        UniqueConstraint, Enum, Boolean)
+
+from sqlalchemy.orm import Session, mapper, relationship
+
+from sqlalchemy_utils import database_exists, create_database
+
 
 string_literal = str
 
@@ -23,37 +31,16 @@ class Config:
     def __init__(self, **kws):
         self.logdir =  '/var/log/pvarch'
 
-        self.server = 'mariadb'
+        self.server = 'postgres'  # or 'mariadb'
         self.host = 'localhost'
         self.user = 'epics'
         self.password = 'change_this_password!'
         self.sql_dump = '/usr/bin/maridb-dump'
 
         self.mail_server =  'localhost'
-        self.mail_from = 'gsecars@millenia.aps.anl.gov'
-        self.cache_db = 'pvarch_master'
+        self.mail_from = 'pvarch@aps.anl.gov'
+        self.cache_db = 'pvarch_main'
         self.dat_prefix = 'pvdata'
-        self.dat_format = '%s_%.5d'
-        self.pv_deadtime_double = '5'
-        self.pv_deadtime_enum = '1'
-        self.cache_alert_period = '15'
-        self.cache_report_period = '300'
-        self.archive_report_period = '300'
-
-        self.cache_activity_time = '10'
-        self.cache_activity_min_updates =  '2'
-        self.arch_activity_time = '60'
-        self.arch_activity_min_updates = '2'
-
-
-        self.web_baseurl = 'https://localhost/'
-        self.web_url = 'pvarch'
-        self.web_dir = '/var/web/pvarch'
-        self.web_secret_key = 'please replace with a random string'
-        self.web_admin_user = 'the right honorable foobar'
-        self.web_admin_pass = 'please select a better password'
-        self.web_index = 'index'
-        self.web_pages = [["APS",   "StorageRing"]]
 
         for key, val in kws.items():
             setattr(self, key, val)
@@ -75,47 +62,26 @@ def get_config(envvar='PVARCH_CONFIG', **kws):
     conf.update(kws)
     return Config(**conf)
 
-def get_dbengine(dbname, server='sqlite', create=False,
-                 user='', password='',  host='', port=None):
-    """create database engine"""
-    if server == 'sqlite':
-        return create_engine('sqlite:///%s' % (dbname))
-    elif server == 'mysql':
-        conn_str= 'mysql+mysqldb://%s:%s@%s:%d/%s'
-        if port is None:
-            port = 3306
-        return create_engine(conn_str % (user, password, host, port, dbname))
+def isotime(dtime=None, sep=' '):
+    if dtime is None:
+        dtime = datetime.now()
+    return datetime.isoformat(dtime, sep=sep)
 
-    elif server == 'mariadb':
-        conn_str= 'mariadb+pymysql://%s:%s@%s:%d/%s'
-        if port is None:
-            port = 3306
-        return create_engine(conn_str % (user, password, host, port, dbname))
+def get_credentials(envvar):
+    """look up credentials environment variable or filename"""
+    conn = {}
+    credfile = os.environ.get(envvar, None)
+    if credfile is not None and os.path.exists(credfile):
+        return read_credentials_file(credfile)
+    elif os.path.exists(envvar):
+        return read_credentials_file(envvar)        
 
-    elif server.startswith('p'):
-        conn_str= 'postgresql://%s:%s@%s:%d/%s'
-        if port is None:
-            port = 5432
-        return create_engine(conn_str % (user, password, host, port, dbname))
+def read_credentials_file(fname):
+    """read credentials file"""
+    with open(fname, 'rb') as fh:
+        text = str(from_bytes(fh.read()).best())            
+    return toml.loads(text)
 
-
-class DatabaseConnection:
-    def __init__(self, dbname, config, autocommit=True):
-        self.dbname = dbname
-        self.engine = get_dbengine(dbname,
-                                   server=config.server,
-                                   user=config.user,
-                                   password=config.password,
-                                   host=config.host)
-
-        self.metadata = MetaData(self.engine)
-        self.metadata.reflect()
-        self.conn    = self.engine.connect()
-        self.session = sessionmaker(bind=self.engine, autocommit=autocommit)()
-        self.tables  = self.metadata.tables
-
-    def flush(self):
-        self.session.flush()
 
 def None_or_one(result):
     """expect result (as from query.fetchall() to return
@@ -151,7 +117,7 @@ def clean_string(x, maxlen=4090):
     return clean_bytes(x, maxlen=maxlen).decode('utf-8')
 
 def safe_string(x):
-    return  string_literal(x)
+    return string_literal(x)
 
 def clean_mail_message(s):
     "cleans a stored escaped mail message for real delivery"
@@ -186,18 +152,16 @@ def clean_mail_message(s):
 
 def get_force_update_time():
     """ inserts will be forced into the Archives for stale values
-    between 18 and 22 hours after last insert.
+    between 17 and 24 hours after last insert.
     This will spread out forced inserts, but still mean that each
     PV is recorded at least once in any 24 hour period.
     """
-    return randint(18*3600, 22*3600)
+    return randint(17*3600, 23*3600)
 
-def timehash():
-    """ generate a simple, 10 character hash of the timestamp:
-    Number of possibilites = 16^11 >~ 10^13
-    the hash is a linear-in-milliseconds timestamp, so collisions
-    cannot happen for 10^12 milliseconds (33 years). """
-    return hex(int(10000.*time.time()))[2:-1]
+def timehash2timestamp(thash):
+    """ convert timehash to timestamp"""
+    return int(thash, 16)/5.e3
+
 
 def tformat(t=None,format="%Y-%b-%d %H:%M:%S"):
     """ time formatting"""
@@ -226,104 +190,34 @@ def time_str2sec(s):
     return time.mktime((int(yr),int(mon),int(day),int(hr),int(min), int(sec),0,0,tz))
 
 
-def write_saverestore(pvvals,format='plain',header=None):
+def write_saverestore(pvvals, format='plain', header=None):
     """ generate a save/restore file for a set of PV values
 
-    pvvals is a list or tuple of (pvname,value) pairs
+    pvvals is a dict, list, or tuple of (pvname,value) pairs
     format can be
         plain   plain save/restore file
-        idl     idl script
         python  python script
     header: list of additional header/comment lines
     """
     out = []
-    fmt = format.lower()
-
-    xfmt = "%s  %s"
-    cmt  = '#'
-    if format.startswith('idl'):
-        out.append("; IDL save restore script")
-        xfmt = "s = caput('%s', %s)"
-        cmt  = ';'
-    elif format.startswith('py'):
-        out.append("#!/usr/bin/env python")
+    if format.lower().startswith('py'):
+        out.append(f"#!/usr/bin/env python")
         out.append("#  Python save restore script")
         out.append("from epics import caput")
         xfmt = "caput('%s', %s)"
     else:
         out.append("# Plain Save/Restore script")
+        xfmt = "%s  %s"
 
     if header is not None:
-        for h in header: out.append("%s %s" % (cmt,h))
+        for h in header:
+            out.append(f"# {h}")
 
-    for pv,val in pvvals:
-        out.append(xfmt  % (pv,val))
-
+    if isinstance(pvvals, dict):
+        pvvals = pvvals.items()
+           
+    for pv, val in pvvals:
+        out.append(xfmt  % (pv, val))
+    out.append('')
     return '\n'.join(out)
 
-
-def hformat(val, length=10):
-    """Format a number with '%g'-like format.
-
-    Except that:
-        a) the output string will be exactly the requested length.
-        b) positive numbers will have a leading blank.
-        b) the precision will be very close to as high as possible.
-        c) trailing zeros will not be trimmed.
-
-    The precision will typically be ``length-7``, with at least
-    ``length-6`` significant digits.
-
-    Parameters
-    ----------
-    val : float
-        Value to be formatted.
-    length : int, optional
-        Length of output string (default is 11).
-
-    Returns
-    -------
-    str
-        String of specified length.
-
-    Notes
-    ------
-    1. Positive values will have leading blank.
-
-    2. Precision loss:  at values of 1.e(length-3), and at values
-    of 1.e(8-length) (so at 1.e+8 and 1.e-3 for length=11)
-
-    there will be a drop in precision as the output
-    changes from 'f' to 'e' formatting:
-    >>>
-    >>> x = 99999995.2
-    >>> print('\n'.join((hformat(x, length=11), hformat(x+10, length=11))))
-     99999995.2
-     1.0000e+08
-
-    So that the reported precision drops from 9 to 6. This is inevitable
-    when switching precision, we're just noting where and how it happens
-    with this function.
-    """
-    try:
-        if isinstance(val, (str, bytes)):
-           val = float(clean_bytes(val))
-        expon = int(log10(abs(val)))
-    except (OverflowError, ValueError):
-        expon = 0
-    length = max(length, 7)
-    form = 'e'
-    prec = length - 7
-    if abs(expon) > 99:
-        prec -= 1
-    elif ((expon > 0 and expon < (prec+6)) or
-          (expon <= 0 and -expon < (prec-1))):
-        form = 'f'
-        prec += 4
-        if expon > 0:
-            prec = max(0, prec-expon)
-    fmt = '{0: %i.%i%s}' % (length, prec, form)
-    out = fmt.format(val)[:length]
-    if out.endswith("000"):
-        out = out[:-3]
-    return out
