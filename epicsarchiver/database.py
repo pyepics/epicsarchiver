@@ -25,19 +25,19 @@ def flush(engine):
         session.flush()
 
 def get_all_dbs(engine):
-    """get all DBs from engine"""
+    """get list of all DBs from engine"""
     if engine is None:
         return None
     if engine.name.startswith('post'):
         query = text("select datname from pg_database")
-        out = [row[0] for row in engine.connect().execute(query).fetchall()]
-
-    return out
+    elif engine.name.startswith('m'):
+        query = text("show databases")
+    return [row[0] for row in engine.connect().execute(query).fetchall()]
 
 
 class SimpleDB:
     """ simple, non-orm sqlalchemy interface"""
-    def __init__(self, dbname=None, **kws):
+    def __init__(self, dbname=None, warn_missing=True, **kws):
         
         conn = {k: v for k, v in CONN_DEFAULT.items()}
         conn.update(kws)
@@ -64,7 +64,8 @@ class SimpleDB:
             self.conn    = self.engine.connect()              
             self.tables  = self.metadata.tables
         except:
-            print(f"Warning: database '{dbname}' appears to not exist")
+            if warn_missing:
+                print(f"Warning: database '{dbname}' appears to not exist")
 
     def connect(self, dbname, server='sqlite', host='localhost',
                 port=None, dialect=None, user='', password=''):
@@ -332,24 +333,21 @@ def create_pvarch_main(dbname='pvarch_main', **kws):
     password  password for database (mysql,postgresql only)
     """
     
-    sdb = SimpleDB(dbname, **kws)
+    db = SimpleDB(dbname, warn_missing=False, **kws)
 
-    if database_exists(sdb.engine.url):
+    if database_exists(db.engine.url):
         raise ValueError(f"database {dbname} exists: cannot create")
     
-    create_database(sdb.engine.url)
-
     print(f"creating database '{dbname}'")
-    engine = sdb.engine
-    metadata = sdb.metadata
+    create_database(db.engine.url)
            
-    info = Table('info', metadata,
+    info = Table('info', db.metadata,
                  Column('key', String(256), primary_key=True, unique=True),
                  Column('value', Text),
                  Column('modify_time', DateTime, default=datetime.now),
                  Column('notes', Text))
 
-    alerts = Table('alerts', metadata,
+    alerts = Table('alerts', db.metadata,
                    Column('id', Integer, primary_key=True),
                    Column('name', String(256), nullable=False, unique=True),
                    Column('pvname', String(128)),
@@ -362,7 +360,7 @@ def create_pvarch_main(dbname='pvarch_main', **kws):
                           default='eq'),
                    Column('active', Boolean,  default=True))
 
-    cache = Table('cache', metadata,
+    cache = Table('cache', db.metadata,
                   Column('id', Integer, primary_key=True),
                   Column('pvname', String(128)),
                   Column('value', Text),
@@ -373,13 +371,13 @@ def create_pvarch_main(dbname='pvarch_main', **kws):
                   Column('active', Boolean,  default=True))
     
 
-    pairs = Table('pairs', metadata,
+    pairs = Table('pairs', db.metadata,
                   Column('pv1', None, ForeignKey('cache.id')),
                   Column('pv2', None, ForeignKey('cache.id')),
                   Column('score', Integer, default=1)
                   )
                   
-    requests = Table('requests', metadata,
+    requests = Table('requests', db.metadata,
                      Column('pvname', String(128)),
                      Column('request_time', DateTime, default=datetime.now),
                      Column('action',
@@ -387,7 +385,7 @@ def create_pvarch_main(dbname='pvarch_main', **kws):
                             default='add'),
                      )
     
-    runs = Table('runs', metadata,
+    runs = Table('runs', db.metadata,
                  Column('id', Integer, primary_key=True),
                  Column('dbname', Text),
                  Column('notes', Text),
@@ -395,11 +393,11 @@ def create_pvarch_main(dbname='pvarch_main', **kws):
                  Column('stop_time', DateTime)
                  )
 
-    metadata.create_all(bind=engine)
-    flush(engine)
+    db.metadata.create_all(bind=db.engine)
+    flush(db.engine)
     time.sleep(0.25)
 
-    sdb = SimpleDB(dbname, server,  **kws)
+    odb = SimpleDB(dbname, warn_missing=True,  **db.connection_args)
     
     for key, value in (("version", "3.0"),
                        ("cache_status", "offline"),
@@ -415,9 +413,9 @@ def create_pvarch_main(dbname='pvarch_main', **kws):
                        ("logdir",       ""),
                        ("cache_alert_period", "30"),
                        ("cache_report_period", "300")):
-        sdb.set_info(key, value, set_modify_time=True)
+        odb.set_info(key, value, set_modify_time=True)
 
-    return sdb
+    return odb
 
 def create_pvarch_data(maindb='pvarch_main'):
     """Create the next pvdata table for archiver
@@ -440,7 +438,8 @@ def create_pvarch_data(maindb='pvarch_main'):
 
     dbname = None
     if main_data is not None:
-        current_db = SimpleDB(main_data)
+        current_db = SimpleDB(main_data, warn_missing=False,
+                              **pvarch.connection_args)
         if current_db.tables is None:  # db does not exist : needs to be created
             dbname = main_data
         else: 
@@ -456,16 +455,16 @@ def create_pvarch_data(maindb='pvarch_main'):
             if dbname in alldbs:
                 raise ValueError(f"exhausted database names '{dbname}'")
 
-    sdb = SimpleDB(dbname, **pvarch.connection_args)
+    db = SimpleDB(dbname, warn_missing=False,
+                   **pvarch.connection_args)
 
-    if database_exists(sdb.engine.url):
+    if database_exists(db.engine.url):
         raise ValueError(f"database {dbname} exists: cannot create")
 
     print(f"Creating EpicsArchiver Database '{dbname}'")
-    create_database(sdb.engine.url)
+    create_database(db.engine.url)
 
-    metadata = sdb.metadata
-    pv = Table('pv', metadata,
+    pv = Table('pv', db.metadata,
                Column('id', Integer, primary_key=True),               
                Column('pvname', String(128), unique=True),
                Column('description', String(256)),
@@ -487,14 +486,14 @@ def create_pvarch_data(maindb='pvarch_main'):
 
     dtabs = []
     for i in range(128):
-        t = Table(f'pvdat{(i+1):03d}', metadata, 
+        t = Table(f'pvdat{(i+1):03d}', db.metadata, 
                   Column('time', Float),
                   Column('pv_id', ForeignKey('pv.id')),
                   Column('value', Text))
         dtabs.append(t)
     
-    metadata.create_all(bind=sdb.engine)
-    flush(sdb.engine)
+    db.metadata.create_all(bind=db.engine)
+    flush(db.engine)
 
     time.sleep(0.25)
     return SimpleDB(dbname, **pvarch.connection_args)    
