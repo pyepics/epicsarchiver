@@ -112,12 +112,23 @@ class SimpleDB:
             if flush:
                 session.flush()
         return result
-
+ 
     def insert(self, tablename, **kws):
         """insert to a table with keyword/value pairs"""
         tab = self.tables[tablename]
         self.execute(tab.insert().values(**kws))
 
+
+    def insert_many(self, tablename, list_of_dicts):
+        """make many inserts to a single table with a list of dicts"""
+        
+        tab = self.tables[tablename]
+        with Session(self.engine) as session, session.begin():
+            for kws in list_of_dicts:
+                session.execute(tab.insert().values(**kws))
+            session.flush()
+
+        
     def set_info(self, key, value, set_modify_time=True, do_execute=True):
         """set key / alue in the info table
         do_execute=False to avoid executing, and only return query
@@ -180,11 +191,6 @@ class SimpleDB:
     def add_row(self, tablename, **kws):
         """add row to a table with keyword/value pairs  == insert()"""
         self.insert(tablename, **kws)
-
-    def insert(self, tablename, **kws):
-        """insert to a table with keyword/value pairs"""
-        tab = self.tables[tablename]
-        self.execute(tab.insert().values(**kws), set_modify_time=True)
 
     def table_error(self, message, tablename, funcname):
         raise ValueError(f"{message} for table '{tablename}' in {funcname}()")
@@ -358,7 +364,10 @@ def create_pvarch_main(dbname='pvarch_main', **kws):
                    Column('compare',
                           Enum('eq','ne','le','lt','ge','gt', name='compare', create=True),
                           default='eq'),
-                   Column('active', Boolean,  default=True))
+                   Column('status', Enum('ok','alarm', name='alarm_status', create=True),
+                          default='ok'),
+                   Column('active', Boolean,  default=True),
+                   )
 
     cache = Table('cache', db.metadata,
                   Column('id', Integer, primary_key=True),
@@ -366,14 +375,15 @@ def create_pvarch_main(dbname='pvarch_main', **kws):
                   Column('value', Text),
                   Column('cvalue', Text),
                   Column('type', Text, default='int'),
+                  Column('enum_strs', Text, default=''),
                   Column('timestamp', Float),
                   Column('notes', Text),
                   Column('active', Boolean,  default=True))
     
 
     pairs = Table('pairs', db.metadata,
-                  Column('pv1', None, ForeignKey('cache.id')),
-                  Column('pv2', None, ForeignKey('cache.id')),
+                  Column('pv1', String(128)),
+                  Column('pv2', String(128)),
                   Column('score', Integer, default=1)
                   )
                   
