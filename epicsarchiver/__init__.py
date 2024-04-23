@@ -15,6 +15,6 @@ from .util import isotime
 from .database import SimpleDB, create_pvarch_main, create_pvarch_data
 from .pvarch import pvarch_main
 
-# from .cache import Cache
+from .cache import Cache
 # from .archiver import Archiver
 # from .schema import initial_sql

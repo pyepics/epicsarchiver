@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+#
+# caching from epics to cache table in pvarch_main table 
 
 import os
 import sys
@@ -18,11 +19,10 @@ from sqlalchemy import text, and_, or_
 import epics
 
 from .util import (clean_bytes, normalize_pvname, tformat, valid_pvname,
-                   clean_mail_message, SimpleDB, None_or_one,
-                   MAX_EPOCH, get_config, motor_fields, get_pvpair)
+                   clean_mail_message, None_or_one, get_credentials,
+                   MAX_EPOCH, get_config, motor_fields)
 
-
-from . import schema
+from .database import SimpleDB, CREDENTIALS_ENVVAR
 
 logging.basicConfig(level=logging.INFO,
                     format='%(levelname)s [%(asctime)s]  %(message)s',
@@ -40,15 +40,19 @@ OPS = {'eq':'__eq__', 'ne':'__ne__',
        'ge':'__ge__', 'gt':'__gt__'}
 
 
+def get_pv(pvname):
+    return epics.get_pv(normalize_pvname(pvname), form='native')
+
 class Cache(object):
     """interface to main/master pvarch database,
     used for running the caching process and for
     maintenance methods
     """
-    def __init__(self, envvar='PVARCH_CONFIG', pvconnect=True, debug=False, **kws):
+    def __init__(self, pvconnect=True, debug=False, **kws):
         t0 = time.monotonic()
-        self.config = get_config(envar=envvar, **kws)
         self.pvconnect = pvconnect
+        dbcred = get_credentials(CREDENTIALS_ENVVAR)
+        
         self.logger = logging.getLogger()
         if debug:
             self.logger.setLevel(logging.DEBUG)
@@ -58,12 +62,17 @@ class Cache(object):
                             'warning': self.logger.warn,
                             'error': self.logger.error,
                             'critical': self.logger.critical}
-        self.pidfile = os.path.join(self.config.logdir,  'pvcache.pid')
-        self.db = DatabaseConnection(self.config.cache_db, self.config)
+        main_dbname = dbcred.pop('pvarch_main', 'pvarch_main')
+        self.db = SimpleDB(main_dbname, **dbcred)
         self.tables  = self.db.tables
-        self.pid, _status = self.get_pidstatus()
+        print('Tables: ', self.tables.keys())
+        print('Info: ', self.get_info())
+        # self.pidfile = os.path.join(self.config.logdir,  'pvcache.pid')
 
-        self.check_for_updates()
+        stat = self.get_status()
+        print('Status: ', stat)
+
+        # self.check_for_updates()
         self.pvs   = {}
         self.data  = {}
         self.alert_data = {}
@@ -83,7 +92,7 @@ class Cache(object):
         """
         check db version and maybe repair datatypes or otherwise check and alter tables
         """
-        version_row = self.get_info(process='version')
+        version_row = self.get_info('version')
         if version_row is None:
             self.log("upgrading database to version 1")
             for stmt in  ("alter table info modify process varchar(256);",
@@ -124,7 +133,7 @@ class Cache(object):
         This checks carefully for the case of "no archive yet".
         """
         conf = self.config
-        arch_row = self.get_info(process='archive')
+        arch_row = self.get_info(prefix='archive')
         current_dbname = None
         current_index = 0
         if arch_row is not None:
@@ -180,30 +189,32 @@ class Cache(object):
         table.update().where(table.c.process=='archive').execute(db=dbname)
         return dbname
 
-
     def get_info(self, process='cache'):
-        " get value from info table"
-        info = self.tables['info']
-        return None_or_one(info.select().where(info.c.process==process).execute().fetchall())
+        " get data from info table"
+        return self.db.get_info(prefix=process)
 
-    def get_pidstatus(self, process='cache'):
-        row = self.get_info(process=process)
-        return row.pid, row.status
+    def get_status(self, process='cache'):
+        """get pid, status, dbname for a process"""
+        info = self.db.get_info(prefix=process)
+        out = {}
+        for name, default in (('pid', 0), ('status', 'offline'),
+                              ('dbname', None)):
+            out[name] = info.get(f'{process}_{name}', default)
+        return out
+   
 
-    def set_info(self, process='cache', **kws):
+    def set_info(self, key, value):
         " set value(s) in the info table"
-        table = self.tables['info']
-        table.update().where(table.c.process==process).execute(**kws)
-        self.db.flush()
+        self.db.set_info(key, value)
 
     def get_pvnames(self):
         """ generate self.pvnames: a list of pvnames in the cache"""
         pvnames = []
-        for row in self.tables['cache'].select().execute().fetchall():
+        for row in self.db.get_rows('cache'):
             pvnames.append(row.pvname)
             self.pvtypes[row.pvname] = row.type
             if row.pvname not in self.pvs and self.pvconnect:
-                self.pvs[row.pvname] = epics.get_pv(row.pvname)
+                self.pvs[row.pvname] = get_pv(row.pvname)
         return pvnames
 
     def get_enum_strings(self):
@@ -216,34 +227,6 @@ class Cache(object):
             out[row.pv] = json.loads(row.data)
         return out
 
-    def update_pvextra(self):
-        """
-        update extra PV data such as (and currently only) enum strings
-        """
-        if not self.pvconnect:
-            return
-        # update enum strings for enum PVs
-        extras = self.tables['pvextra']
-        all_enumstrs = {}
-        t0 = time.time()
-        for row in extras.select().where(extras.c.notes=='enum_strs').execute().fetchall():
-            all_enumstrs[row.pv] = row.data
-
-        for row in self.tables['cache'].select().execute().fetchall():
-            pvname = row.pvname
-            if row.type == 'enum' and pvname in self.pvs:
-                if not self.pvs[pvname].connected:
-                    continue
-                enumstrs = self.pvs[pvname].enum_strs
-                if enumstrs is not None and len(enumstrs) > 0:
-                    enumstrs = json.dumps(list(enumstrs))
-                    if pvname not in all_enumstrs:
-                        extras.insert().execute(pv=pvname,
-                                                notes='enum_strs',
-                                                data=enumstrs)
-                    elif enumstrs != all_enumstrs[pvname]:
-                        extras.update().where(and_(extras.c.pv==pvname,
-                                                   extras.c.notes=='enum_strs')).execute(data=enumstrs)
 
     def get_narchived(self, time_ago=60):
         """
@@ -252,7 +235,7 @@ class Cache(object):
         this is useful when checking if any values have been cached.
         """
         n = 0
-        archdbname = self.get_info(process='archive').db
+        archdbname = self.get_info('archive_database')
         archdb = DatabaseConnection(archdbname, self.config)
 
         whereclause = text("time>%d" % (time.time()-time_ago))
@@ -262,7 +245,7 @@ class Cache(object):
         return n
 
     def show_status(self, with_archive=True, cache_time=60, archive_time=60):
-        info = dict(self.get_info(process='cache').items())
+        pid, status = self.get_info(process='cache').items()
         try:
             proc = psutil.Process(info['pid'])
             tnow = datetime.fromtimestamp(round(time.time()))
@@ -342,7 +325,7 @@ class Cache(object):
                         self.alert_data[pvname]['last_value'] = pv.value
                         self.alert_data[pvname]['last_notice'] = time.time() - 30.0
 
-        self.update_pvextra()
+        # self.update_pvextra()
         self.log("connect to pvs: %.3f sec, %d new entries" % (time.time()-t0, nnew))
         return nnew
 
@@ -463,9 +446,7 @@ class Cache(object):
                 val = val.tolist()
             if self.pvtypes[pvname] == 'double':
                 cval = hformat(val)
-            newdata[pvname] = {'ts': tstamp,
-                               'val': clean_bytes(val),
-                               'cval': clean_bytes(cval)}
+            newdata[pvname] = {'ts': tstamp, 'val': val, 'cval': cval}
 
         table = self.tables['cache']
         with self.db.session.begin():
@@ -502,60 +483,72 @@ class Cache(object):
                                    ts=float(row.ts))
         return out
 
-    def add_pv(self, pvname, with_motor_fields=True):
+    def add_pvs(self, pvlist, with_motor_fields=True):
         """ add a PV or list of PVs to the cache"""
-        if isinstance(pvname, (str, bytes)):
-            pvname = [pvname]
+        if isinstance(pvlist, str):
+            pvlist = [pvlist]
 
-        pvs = []
+        pvlist = [normalize_pvname(pvname) for pvname in pvlist]
         pvnames = self.get_pvnames()
-        for name in  pvname:
-            if isinstance(name, bytes):
-                name = name.decode('utf-8')
-            name = normalize_pvname(name)
-            if name not in pvnames:
-                pvs.append(epics.get_pv(name))
+        for pvname in pvlist:
+            if pvname not in self.pvs:
+                self.pvs[pvname] = get_pv(pvname)
 
-        if len(pvs) == 0:
-            return
-
-        addcmd = self.tables['cache'].insert().execute
-        def add_pv2cache(pv):
-            self.pvs[pv.pvname] = pv
-            pvtype = pv.type.replace('ctrl_', '').replace('time_', '')
-            pvtype = pvtype.replace('short', 'int').replace('long', 'int')
-            pvtype = pvtype.replace('float', 'double')
-            cval = pv.get(as_string=True)
-            val = pv.value
-            if isinstance(val, np.ndarray):
-                val = val.tolist()
-            addcmd(pvname=pvname,
-                   type=pvtype,
-                   ts=time.time(),
-                   value=clean_bytes(val),
-                   cvalue=clean_bytes(cval),
-                   active='yes')
-            return pvtype
-
-        time.sleep(0.010)
-        for pv in pvs:
-            if pv.wait_for_connection(timeout=3.0):
-                pvtype = add_pv2cache(pv)
-                extra_pvs = []
-                prefix = pv.pvname
-                if prefix.endswith('.VAL'): prefix = prefix[:-4]
-                if '.' in prefix or pvtype != 'double':
-                    continue
-                rtype = epics.get_pv(prefix+'.RTYP')
-                if 'motor' != rtype.get():
-                    continue
-                namelist = ["%s%s" % (prefix, i) for i in motor_fields]
-                extra_pvs = [epics.get_pv(n) for n in namelist]
-                namelist.append(pv.pvname)
-                for epv in extra_pvs:
-                    if pv.wait_for_connection(timeout=1):
-                        add_pv2cache(pv)
-                        self.set_allpairs(epv, namelist, score=10)
+        pvs_to_add = []
+        for pvname in pvlist:
+            thispv = self.pvs[pvname]
+            if not thispv.connected:
+                for i in range(20):
+                    if not thispv.connected:
+                        time.sleep(0.1)
+            if thispv.connected:
+                pvs_to_add.append(thispv)
+        time.sleep(0.01)
+        print("PVS to ADD ", pvs_to_add)
+        
+        def make_insertfields(pv):
+            dtype = pv.type
+            dtype = dtype.replace('ctrl_', '').replace('time_', '')
+            dtype = dtype.replace('short', 'int').replace('long', 'int')
+            dtype = dtype.replace('float', 'double')
+            out = {'pvname': pv.pvname,
+                    'value': pv.value,
+                    'cvalue': pv.char_value,
+                    'active': True, 'type': dtype,
+                    'timestamp': time.time()}
+            if dtype == 'enum':
+                out['enum_strs']  = json.dumps(pv.enum_strs)
+            return out
+            
+        idicts = []
+        all_pairs = []
+        for pv in pvs_to_add:
+            out = make_insertfields(pv)
+            idicts.append(out)
+            prefix = out['pvname']
+            # check if PV is for a motor, add motor fields
+            if (with_motor_fields and
+                prefix.endswith('.VAL') and
+                out['type'] == 'double'):
+                prefix = prefix[:-4]
+                rtype = get_pv(f"{prefix}.RTYP")
+                time.sleep(0.010)
+                if 'motor' == rtype.get():
+                    m_names = [f"{prefix}{i}" for i in motor_fieds]
+                    m_pvs = [get_pv(n) for n in m_names]
+                    for epv in m_pvs:
+                        epv.wait_for_connection(timeout=1)
+                    for epv in m_pvs:
+                        if epv.connected:
+                            self.pvs[epv.pvname] = epv
+                        idicts.append(make_insertfields(epv))
+                    m_names.append(f"{prefix}.VAL")
+                    all_pairs.append(m_names)
+                            
+        self.db.insert_many('cache', idicts)
+        for pairs in all_pairs:
+            self.set_all_pairs(pairs, score=10)
+        
         self.connect_pvs()
         return
 
@@ -578,7 +571,7 @@ class Cache(object):
             for pvname in pvnames:
                 self.add_pv(pvname)
             if len(pvnames) > 1:
-                self.set_allpairs(pvnames)
+                self.set_all_pairs(pvnames)
 
 
     def drop_pv(self, pvname):
@@ -743,7 +736,7 @@ See %s%s/plot/1days/now/%s""" % ('\n'.join(mlines),
                     self.add_pv(pvname)
 
                     if pvname not in self.pvs:
-                        pv = epics.get_pv(pvname)
+                        pv = get_pv(pvname)
                         conn = pv.wait_for_connection(timeout=3.0)
                         if conn:
                             needs_connect_pvs = True
@@ -754,8 +747,8 @@ See %s%s/plot/1days/now/%s""" % ('\n'.join(mlines),
                                 val = val.tolist()
                             cache.insert().execute(pvname=pvname, type=pv.type,
                                                    ts=time.time(),
-                                                   value=clean_bytes(val),
-                                                   cvalue=clean_bytes(cval),
+                                                   value=val,
+                                                   cvalue=cval,
                                                    active='yes')
                             reqtable.delete().where(reqtable.c.id==row.id).execute()
                             msg = 'added'
@@ -768,6 +761,11 @@ See %s%s/plot/1days/now/%s""" % ('\n'.join(mlines),
 
 
     def read_alert_table(self):
+        self.alert_data = {}
+        for row in self.db.get_rows('alerts'):
+            print("Alert row ", row)
+            
+        old = """
         for alert in self.tables['alerts'].select().execute().fetchall():
             pvname = alert.pvname
             if pvname not in self.alert_data:
@@ -781,99 +779,98 @@ See %s%s/plot/1days/now/%s""" % ('\n'.join(mlines),
                 if pvname in self.pvs:
                     value = self.pvs[pvname].value
                 self.alert_data[pvname]['last_value'] = value
-
+        """
+        
     def get_alerts(self):
         self.read_alert_table()
         return self.alert_data
 
     def get_runs(self, start_time=0, stop_time=None):
-        runs = self.tables['runs']
+        runs = self.db.get_rows('runs')
         if stop_time is None:
             stop_time = MAX_EPOCH
-        q = runs.select().where(runs.c.start_time <= Decimal(stop_time))
-        q = q.where(runs.c.stop_time >= Decimal(start_time))
-        return q.execute().fetchall()
+        out = []
+        for run in runs:
+            start = run.start_time
+            stop = run.stop_time
+            if run.stop_time  > start_time and run.start_time < stop_time:
+                out.append(run)
+
+        return out
 
     def get_related(self, pvname, limit=None):
         """get related PVs for the supplied pvname, a dictionary ordered by score"""
 
-        ptable = self.tables['pairs']
-        out = {}
-        q = ptable.select().where(or_(ptable.c.pv1==pvname, ptable.c.pv2==pvname))
-        i = 0
-        if limit is None: limit = -9.27
-        for row in q.order_by(ptable.c.score.desc()).execute().fetchall():
+        out, count = {}, 0
+        if limit is None:
+            limit = 1.e99
+        a = self.db.get_rows('pairs', where={'pv1': pvname}, order_by='score')
+        b = self.db.get_rows('pairs', where={'pv2': pvname}, order_by='score')
+        for row in a + b:
             other = row.pv1 if row.pv2 == pvname else row.pv2
             out[other] = row.score
-            i += 1
-            if i == limit:
-                break
+        # sort by score descending
+        out = {k:v for k, v in sorted(out.items(), key=lambda i: -i[1])}
+
+        # maybe limit to top scores
+        if limit is not None and limit < len(out):
+            out = dict(list(out.items())[:limit])
+            
         return out
 
-    def get_pair_score(self, pv1, pv2):
-        "get pair score for 2 pvs"
-        pv1, pv2 = get_pvpair(pv1, pv2)
-        if pv1 not in self.pvs or pv2 not in self.pvs:
-            return 0
+    def get_pair_score(self, pvname1, pvname2):
+        "get pair score for 2 pvnames"
         score = 0
-        ptable = self.tables['pairs']
-        q = ptable.select().where(and_(ptable.c.pv1==pv1, ptable.c.pv2==pv2))
-        r = None_or_one(q.execute().fetchall())
-        if r is None:
-            q = ptable.select().where(and_(ptable.c.pv1==pv2, ptable.c.pv2==pv1))
-            r = None_or_one(q.execute().fetchall())
-        if r is not None:
-            score = r.score
+        nrows = 0
+        if pvname1 == pvname2:
+            return 0
+        pvname1, pvname2 = sorted([pvname1, pvname2])
+        for where in ({'pv1': pvname1, 'pv2': pvname2},
+                      {'pv1': pvname2, 'pv2': pvname1}):
+            rows = self.db.get_rows('pairs', where=where)
+            if len(rows) > 0:
+                for row in rows:
+                    score += row.score
+                    nrows += 1
+        if nrows > 1:
+            self.db.delete_rows('pairs', where={'pv1': pvname2, 'pv2': pvname1})
+            self.db.update('pairs', where={'pv1': pvname1, 'pv2': pvname2},
+                           score=score)
         return score
 
-    def set_pair_score(self, pv1, pv2, score=None, increment=1):
-        "set pair score for 2 pvs"
-        pv1, pv2 = get_pvpair(pv1, pv2)
-        if pv1 == pv2:
-            return
-        if pv1 not in self.pvs or pv2 not in self.pvs:
-            self.log("Cannot set pair score for unknonwn PVS '%s' and '%s'" % (pv1, pv2),
+    def set_pair_score(self, pvname1, pvname2, score=None, increment=1):
+        "set pair score for 2 pvnames"
+        if pvname1 == pvname2:
+            self.log(f"Cannot set pair score for PV with itself '{pvname1}'",
+                     level='warn')
+        if pvname1 not in self.pvs or pvname2 not in self.pvs:
+            self.log(f"Cannot set pair score for unknown PVS '{pvname1}' and '{pvname2}",
                      level='warn')
 
-        current_score = self.get_pair_score(pv1, pv2)
+        pvname1, pvname2 = sorted([pvname1, pvname2])
+        current_score = self.get_pair_score(pvname1, pvname2)
         if score is None:
             score = increment + current_score
 
-        ptable = self.tables['pairs']
-        if current_score == 0:
-            ptable.insert().execute(pv1=pv1, pv2=pv2, score=score)
+        if current_score > 0:
+            self.db.update('pairs', where={'pv1': pvname1, 'pv2': pvname2},
+                           score=score)
         else:
-            ptable.update().where(and_(ptable.c.pv1==pv1,
-                                       ptable.c.pv2==pv2)).execute(score=score)
-
+            self.db.insert('pairs', pv1=pvname1, pv2=pvname2, score=score)            
 
     def increment_pair_score(self, pv1, pv2, increment=1):
         """increase by the pair score for two pvs """
         self.set_pair_score(pv1, pv2, score=None, increment=increment)
 
-    def set_allpairs(self, pvlist, score=10):
+    def set_all_pairs(self, pvlist, score=10):
         """for a list/tuple of pvs, set all pair scores
         to be at least the provided score"""
-        alist = [normalize_pvname(p) for p in pvlist]
-        blist = alist[:]
-        self.get_pvnames()
-        for a in alist:
-            for b in blist:
-                if a != b and self.get_pair_score(a, b) < score:
-                    self.set_pair_score(a, b, score=score)
+        _pvlist = [normalize_pvname(p) for p in pvlist]
 
-    def check_pairscores(self):
-        "return all pair scores, logging duplicates"
-        pairscores = {}
-        ptable = self.tables['pairs']
-        for row in ptable.select().execute().fetchall():
-            pv1, pv2 = get_pvpair(row.pv1, row.pv2)
-            key = '%s@%s' % (pv1, pv2)
-            alt = '%s@%s' % (pv2, pv1)
-            if key in pairscores or ald in pairscores:
-                self.log('duplicate score found: %s / %s'%(pv1, pv2),
-                         level='warn')
-                pairscores[key] += row.score
-            else:
-                pairscores[key] = row.score
-        return pairscores
+        for i, pvname1 in _pvlist:
+            for pvname2 in _pvlist[i+1:]:
+                pvname1, pvname2 = sorted([pvname1, pvname2])                    
+                current_score = self.get_pair_score(pvname1, pvname2)
+                if current_score < 1 or current_score < score:
+                    self.set_pair_score(pvname1, pvname2, score=score)
+
