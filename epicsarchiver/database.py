@@ -305,7 +305,7 @@ class SimpleDB:
             self.table_error(f"no table found", tablename, 'update')
 
         where = self.handle_where(tablename, where=where, funcname='update')
-        self.execute(tab.update().where(where).values(**kws), set_modify_time=True)
+        self.execute(tab.update().where(where).values(**kws))
 
     def delete_rows(self, tablename, where):
         """delete rows from table
@@ -320,7 +320,7 @@ class SimpleDB:
             self.table_error(f"no table found", tablename, 'delete')
 
         where = self.handle_where(tablename, where=where, funcname='delete')
-        self.execute(tab.delete().where(where), set_modify_time=True)
+        self.execute(tab.delete().where(where))
     
 
 def create_pvarch_main(dbname='pvarch_main', **kws):
