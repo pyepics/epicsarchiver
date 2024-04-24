@@ -65,21 +65,16 @@ class Cache(object):
         main_dbname = dbcred.pop('pvarch_main', 'pvarch_main')
         self.db = SimpleDB(main_dbname, **dbcred)
         self.tables  = self.db.tables
-        print('Tables: ', self.tables.keys())
-        print('Info: ', self.get_info())
-        # self.pidfile = os.path.join(self.config.logdir,  'pvcache.pid')
-
         stat = self.get_status()
-        print('Status: ', stat)
 
         # self.check_for_updates()
         self.pvs   = {}
         self.data  = {}
         self.alert_data = {}
         self.pvtypes = {}
-        self.get_pvnames()
-        self.read_alert_table()
         if self.pvconnect:
+            self.get_pvnames()
+            self.read_alert_table()
             self.log('cache with %d PVs ready, %.3f sec' % (len(self.pvs),
                                                             time.monotonic()-t0))
 
@@ -489,7 +484,7 @@ class Cache(object):
             pvlist = [pvlist]
 
         pvlist = [normalize_pvname(pvname) for pvname in pvlist]
-        pvnames = self.get_pvnames()
+        current_pvnames = self.get_pvnames()
         for pvname in pvlist:
             if pvname not in self.pvs:
                 self.pvs[pvname] = get_pv(pvname)
@@ -501,10 +496,9 @@ class Cache(object):
                 for i in range(20):
                     if not thispv.connected:
                         time.sleep(0.1)
-            if thispv.connected:
+            if thispv.connected and pvname not in current_pvnames:
                 pvs_to_add.append(thispv)
         time.sleep(0.01)
-        print("PVS to ADD ", pvs_to_add)
         
         def make_insertfields(pv):
             dtype = pv.type
@@ -521,11 +515,21 @@ class Cache(object):
             return out
             
         idicts = []
-        all_pairs = []
+        all_pairs = [[p.pvname for p in pvs_to_add]]
+        print("PVS to Add ", pvs_to_add)
         for pv in pvs_to_add:
             out = make_insertfields(pv)
             idicts.append(out)
             prefix = out['pvname']
+            if prefix.endswith('.VAL'):
+                dname = prefix.replace('.VAL', '.DESC')
+                dpv = get_pv(dname)
+                dpv.wait_for_connection(timeout=1)
+                if dpv.connected:
+                    self.pvs[dname] = dpv
+                    idicts.append(make_insertfields(dpv)) 
+                    all_pairs.append([prefix, dname])
+                    
             # check if PV is for a motor, add motor fields
             if (with_motor_fields and
                 prefix.endswith('.VAL') and
@@ -534,17 +538,17 @@ class Cache(object):
                 rtype = get_pv(f"{prefix}.RTYP")
                 time.sleep(0.010)
                 if 'motor' == rtype.get():
-                    m_names = [f"{prefix}{i}" for i in motor_fieds]
+                    m_names = [f"{prefix}{i}" for i in motor_fields]
+                    m_names.extend([f"{prefix}.DESC"])
                     m_pvs = [get_pv(n) for n in m_names]
                     for epv in m_pvs:
                         epv.wait_for_connection(timeout=1)
                     for epv in m_pvs:
-                        if epv.connected:
+                        if epv.connected and epv.pvname not in self.pvs:
                             self.pvs[epv.pvname] = epv
-                        idicts.append(make_insertfields(epv))
-                    m_names.append(f"{prefix}.VAL")
+                            idicts.append(make_insertfields(epv))
                     all_pairs.append(m_names)
-                            
+        print("PVs to ADD : ", len(idicts))
         self.db.insert_many('cache', idicts)
         for pairs in all_pairs:
             self.set_all_pairs(pairs, score=10)
@@ -866,11 +870,19 @@ See %s%s/plot/1days/now/%s""" % ('\n'.join(mlines),
         """for a list/tuple of pvs, set all pair scores
         to be at least the provided score"""
         _pvlist = [normalize_pvname(p) for p in pvlist]
-
-        for i, pvname1 in _pvlist:
+        print("Pairs " , len(_pvlist), _pvlist)
+        scores = []
+        for i, pvname1 in enumerate(_pvlist):
             for pvname2 in _pvlist[i+1:]:
-                pvname1, pvname2 = sorted([pvname1, pvname2])                    
-                current_score = self.get_pair_score(pvname1, pvname2)
+                p1, p2 = sorted([pvname1, pvname2])
+                if p1 == p2:
+                    continue
+                current_score = self.get_pair_score(p1, p2)
                 if current_score < 1 or current_score < score:
-                    self.set_pair_score(pvname1, pvname2, score=score)
-
+                    currecnt_score = score
+                else:
+                    self.db.delete_rows('pairs', where={'pv1': p1, 'pv2': p2})
+                scores.append({'pv1': p1, 'pv2': p2, 'score': score})
+                
+        print("adding many pairs ", len(scores))
+        self.db.insert_many('pairs', scores)
