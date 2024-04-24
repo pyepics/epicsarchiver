@@ -2,7 +2,6 @@
 # caching from epics to cache table in pvarch_main table 
 
 import os
-import sys
 import re
 import json
 import time
@@ -15,12 +14,12 @@ from decimal import Decimal
 from datetime import datetime
 
 import numpy as np
-from sqlalchemy import text, and_, or_
+from sqlalchemy import text
 import epics
 
-from .util import (clean_bytes, normalize_pvname, tformat, valid_pvname,
+from .util import (normalize_pvname, tformat, valid_pvname,
                    clean_mail_message, None_or_one, get_credentials,
-                   MAX_EPOCH, get_config, motor_fields)
+                   MAX_EPOCH, motor_fields)
 
 from .database import SimpleDB, CREDENTIALS_ENVVAR
 
@@ -65,7 +64,7 @@ class Cache(object):
         main_dbname = dbcred.pop('pvarch_main', 'pvarch_main')
         self.db = SimpleDB(main_dbname, **dbcred)
         self.tables  = self.db.tables
-        stat = self.get_status()
+        self.get_status()
 
         # self.check_for_updates()
         self.pvs   = {}
@@ -82,45 +81,6 @@ class Cache(object):
         writer = self.log_writers.get(level, self.logger.info)
         writer(message)
 
-
-    def check_for_updates(self):
-        """
-        check db version and maybe repair datatypes or otherwise check and alter tables
-        """
-        version_row = self.get_info('version')
-        if version_row is None:
-            self.log("upgrading database to version 1")
-            for stmt in  ("alter table info modify process varchar(256);",
-                          "alter table cache modify value varchar(4096);",
-                          "alter table cache modify cvalue varchar(4096);",
-                          "alter table cache modify pv  varchar(128);",
-                          "alter table pairs modify pv1 varchar(128);",
-                          "alter table pairs modify pv2 varchar(128);",
-                          "update cache set type='double' where type='time_double';",
-                          "update cache set type='double' where type='time_float';",
-                          "update cache set type='double' where type='float';",
-                          "update cache set type='string' where type='time_string';",
-                          "update cache set type='string' where type='time_char';",
-                          "update cache set type='string' where type='char';",
-                          "update cache set type='enum' where type='time_enum';",
-                          "update cache set type='int' where type='time_int';",
-                          "update cache set type='int' where type='time_long';",
-                          "update cache set type='int' where type='time_short';",
-                          "update cache set type='int' where type='long';",
-                          "update cache set type='int' where type='short';",
-                          """create table pvextra (
-                          id  int(10) unsigned not null auto_increment,
-                          pv        varchar(128) default null,
-                          notes     varchar(512) default null,
-                          data      varchar(4096) default null,
-                          ) default charset=latin1;
-                          """):
-                self.db.engine.execute(stmt)
-            now = time.time()
-            self.tables['info'].insert().execute(process='version', db='1',
-                                                 datetime=tformat(now), ts=now)
-            time.sleep(0.25)
-            self.db = DatabaseConnection(self.config.cache_db, self.config)
 
     def create_next_archive(self, copy_pvs=True):
         """Create a pvdata database for archiving
@@ -870,7 +830,6 @@ See %s%s/plot/1days/now/%s""" % ('\n'.join(mlines),
         """for a list/tuple of pvs, set all pair scores
         to be at least the provided score"""
         _pvlist = [normalize_pvname(p) for p in pvlist]
-        print("Pairs " , len(_pvlist), _pvlist)
         scores = []
         for i, pvname1 in enumerate(_pvlist):
             for pvname2 in _pvlist[i+1:]:
@@ -878,11 +837,9 @@ See %s%s/plot/1days/now/%s""" % ('\n'.join(mlines),
                 if p1 == p2:
                     continue
                 current_score = self.get_pair_score(p1, p2)
-                if current_score < 1 or current_score < score:
-                    currecnt_score = score
-                else:
+                if current_score > 1:
                     self.db.delete_rows('pairs', where={'pv1': p1, 'pv2': p2})
+                score = max(current_score, score)
                 scores.append({'pv1': p1, 'pv2': p2, 'score': score})
                 
-        print("adding many pairs ", len(scores))
         self.db.insert_many('pairs', scores)

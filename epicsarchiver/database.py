@@ -1,8 +1,6 @@
 import os
-import toml
 import time
 from datetime import datetime
-from random import randint
 
 from sqlalchemy import (MetaData, create_engine, and_, text, Table,
                         Column, ForeignKey, Integer, Float, String,
@@ -200,7 +198,7 @@ class SimpleDB:
             funcname = 'handle_where'
         tab = self.tables.get(tablename, None)
         if tab is None:
-            self.table_error(f"no table found", tablename, funcname)
+            self.table_error("no table found", tablename, funcname)
 
         filters = []
         if where is None or isinstance(where, bool) and where:
@@ -213,11 +211,11 @@ class SimpleDB:
                 filters.append(tab.c.id==where)
             else:
                 for colname, coldat in tab.columns.items():
-                    if coldat.primary_key and isinstance(coldat.type, INTEGER):
+                    if coldat.primary_key and isinstance(coldat.type, Integer):
                         filters.append(getattr(tab.c, colname)==where)
             if len(filters) == 0:
-                self.table_error(f"could not interpret integer `where` value",
-                                      tablename, funcname)
+                self.table_error("could not interpret integer `where` value",
+                                 tablename, funcname)
         elif isinstance(where, dict):
             where.update(kws)
             for keyname, val in where.items():
@@ -251,7 +249,7 @@ class SimpleDB:
         """
         tab = self.tables.get(tablename, None)
         if tab is None:
-            self.table_error(f"no table found", tablename, 'get_rows')
+            self.table_error("no table found", tablename, 'get_rows')
 
         where = self.handle_where(tablename, where=where, funcname='get_rows', **kws)
         query = tab.select().where(where)
@@ -302,7 +300,7 @@ class SimpleDB:
         """
         tab = self.tables.get(tablename, None)
         if tab is None:
-            self.table_error(f"no table found", tablename, 'update')
+            self.table_error("no table found", tablename, 'update')
 
         where = self.handle_where(tablename, where=where, funcname='update')
         self.execute(tab.update().where(where).values(**kws))
@@ -317,7 +315,7 @@ class SimpleDB:
         """
         tab = self.tables.get(tablename, None)
         if tab is None:
-            self.table_error(f"no table found", tablename, 'delete')
+            self.table_error("no table found", tablename, 'delete')
 
         where = self.handle_where(tablename, where=where, funcname='delete')
         self.execute(tab.delete().where(where))
@@ -347,61 +345,58 @@ def create_pvarch_main(dbname='pvarch_main', **kws):
     print(f"creating database '{dbname}'")
     create_database(db.engine.url)
            
-    info = Table('info', db.metadata,
-                 Column('key', String(256), primary_key=True, unique=True),
-                 Column('value', Text),
-                 Column('modify_time', DateTime, default=datetime.now),
-                 Column('notes', Text))
+    Table('info', db.metadata,
+          Column('key', String(256), primary_key=True, unique=True),
+          Column('value', Text),
+          Column('modify_time', DateTime, default=datetime.now),
+          Column('notes', Text))
 
-    alerts = Table('alerts', db.metadata,
-                   Column('id', Integer, primary_key=True),
-                   Column('name', String(256), nullable=False, unique=True),
-                   Column('pvname', String(128)),
-                   Column('mailto', Text),
-                   Column('mailmsg', Text),
-                   Column('trippoint', Text),
-                   Column('timeout', Float, default=30.0),
-                   Column('compare',
-                          Enum('eq','ne','le','lt','ge','gt', name='compare', create=True),
-                          default='eq'),
-                   Column('status', Enum('ok','alarm', name='alarm_status', create=True),
+    Table('alerts', db.metadata,
+          Column('id', Integer, primary_key=True),
+          Column('name', String(256), nullable=False, unique=True),
+          Column('pvname', String(128)),
+          Column('mailto', Text),
+          Column('mailmsg', Text),
+          Column('trippoint', Text),
+          Column('timeout', Float, default=30.0),
+          Column('compare', Enum('eq','ne','le','lt','ge','gt',
+                                 name='compare', create=True), default='eq'),
+          Column('status', Enum('ok','alarm', name='alarm_status', create=True),
                           default='ok'),
-                   Column('active', Boolean,  default=True),
-                   )
+          Column('active', Boolean,  default=True),
+          )
 
-    cache = Table('cache', db.metadata,
-                  Column('id', Integer, primary_key=True),
-                  Column('pvname', String(128)),
-                  Column('value', Text),
-                  Column('cvalue', Text),
-                  Column('type', Text, default='int'),
-                  Column('enum_strs', Text, default=''),
-                  Column('timestamp', Float),
-                  Column('notes', Text),
-                  Column('active', Boolean,  default=True))
+    Table('cache', db.metadata,
+          Column('id', Integer, primary_key=True),
+          Column('pvname', String(128)),
+          Column('value', Text),
+          Column('cvalue', Text),
+          Column('type', Text, default='int'),
+          Column('enum_strs', Text, default=''),
+          Column('timestamp', Float),
+          Column('notes', Text),
+          Column('active', Boolean,  default=True))
     
 
-    pairs = Table('pairs', db.metadata,
-                  Column('pv1', String(128)),
-                  Column('pv2', String(128)),
-                  Column('score', Integer, default=1)
-                  )
+    Table('pairs', db.metadata,
+          Column('pv1', String(128)),
+          Column('pv2', String(128)),
+          Column('score', Integer, default=1))
                   
-    requests = Table('requests', db.metadata,
-                     Column('pvname', String(128)),
-                     Column('request_time', DateTime, default=datetime.now),
-                     Column('action',
-                            Enum('add','drop','ignore', name='action', create=True),
-                            default='add'),
-                     )
+    Table('requests', db.metadata,
+          Column('pvname', String(128)),
+          Column('request_time', DateTime, default=datetime.now),
+          Column('action', Enum('add','drop','ignore', name='action',
+                                create=True), default='add'),
+          )
     
-    runs = Table('runs', db.metadata,
-                 Column('id', Integer, primary_key=True),
-                 Column('dbname', Text),
-                 Column('notes', Text),
-                 Column('start_time', DateTime), 
-                 Column('stop_time', DateTime)
-                 )
+    Table('runs', db.metadata,
+          Column('id', Integer, primary_key=True),
+          Column('dbname', Text),
+          Column('notes', Text),
+          Column('start_time', DateTime), 
+        Column('stop_time', DateTime)
+          )
 
     db.metadata.create_all(bind=db.engine)
     flush(db.engine)
@@ -453,11 +448,6 @@ def create_pvarch_data(maindb='pvarch_main'):
         if current_db.tables is None:  # db does not exist : needs to be created
             dbname = main_data
         else: 
-            this_prefix, sindex = main_data.split('_', 1)
-            try:
-                index = int(sindex) + 1
-            except:
-                index = 0
             i, dbname = 0, alldbs[0]
             while dbname in alldbs and i < 10000:
                 i += 1
@@ -474,25 +464,23 @@ def create_pvarch_data(maindb='pvarch_main'):
     print(f"Creating EpicsArchiver Database '{dbname}'")
     create_database(db.engine.url)
 
-    pv = Table('pv', db.metadata,
-               Column('id', Integer, primary_key=True),               
-               Column('pvname', String(128), unique=True),
-               Column('description', String(256)),
-               Column('data_table', String(16), nullable=False),
-               Column('active', Boolean,  default=True),
-               Column('deadtime',  Float, default=10.0),
-               Column('deadband',  Float, default=1.e-5),
-               Column('data_type',
-                      Enum('int','double','string','enum',
-                           name='pvtype', create=True),
-                          default='double'),
-               Column('graph_type',
-                      Enum('continuous','log','discrete',
-                           name='graphtype', create=True),
-                          default='continuous'),                      
-               Column('graph_hi', Text),
-               Column('graph_lo', Text),
-               )
+    Table('pv', db.metadata,
+          Column('id', Integer, primary_key=True),               
+          Column('pvname', String(128), unique=True),
+          Column('description', String(256)),
+          Column('data_table', String(16), nullable=False),
+          Column('active', Boolean,  default=True),
+          Column('deadtime',  Float, default=10.0),
+          Column('deadband',  Float, default=1.e-5),
+          Column('data_type',
+                 Enum('int','double','string','enum',
+                      name='pvtype', create=True), default='double'),
+          Column('graph_type', Enum('continuous','log','discrete',
+                                    name='graphtype', create=True),
+                 default='continuous'),                      
+          Column('graph_hi', Text),
+          Column('graph_lo', Text),
+          )
 
     dtabs = []
     for i in range(128):
