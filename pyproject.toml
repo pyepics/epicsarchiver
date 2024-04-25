@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "wheel", "setuptools_scm>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "epicsarchiver"
+name = "pvarch"
 dynamic = ["version"]
 dependencies = [
     "pyepics>=3.5.0",
@@ -39,21 +39,21 @@ classifiers = [
 ]
 
 [project.scripts]
-    pvarch = "epicsarchiver:pvarch_main"
+    pvarch = "pvarch:pvarch_main"
 
 [project.urls]
-Homepage = "https://github.com/pyepics/epicsarchiver/"
-Documentation = "https://github.com/pyepics/epicsarchiver/"
+Homepage = "https://github.com/pyepics/pvarch/"
+Documentation = "https://github.com/pyepics/pvarch/"
 
 [project.optional-dependencies]
 dev = [ "build",   "twine"]
 web = ["flask"]
-all = ["epicsarchiver[dev, web]"]
+all = ["pvarch[dev, web]"]
 
 [tool.setuptools.packages.find]
-include = ["epicsarchiver"]
+include = ["pvarch"]
 
 [tool.setuptools_scm]
-write_to = "epicsarchiver/version.py"
+write_to = "pvarch/version.py"
 version_scheme = "post-release"
 
